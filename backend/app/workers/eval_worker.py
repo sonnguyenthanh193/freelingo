@@ -7,7 +7,7 @@ import re
 import sys
 
 from app.core.config import settings
-from app.core.database import async_session
+from app.core.database import AsyncSessionLocal
 from app.models.lesson import Exercise, Lesson
 from app.models.study_plan import StudyPlan
 from app.services.eval_queue import dequeue_exercise
@@ -48,7 +48,7 @@ async def _evaluate(exercise: Exercise, lesson: Lesson, native_language: str) ->
     """Run the appropriate evaluation for an exercise type."""
     target_language = "en-GB"
     if lesson.study_plan_id:
-        async with async_session() as db:
+        async with AsyncSessionLocal() as db:
             plan = await db.get(StudyPlan, lesson.study_plan_id)
             if plan:
                 target_language = plan.target_language

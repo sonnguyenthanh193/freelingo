@@ -37,9 +37,10 @@ async def enqueue_exercise(exercise_id: int, payload: dict[str, Any]) -> None:
 async def dequeue_exercise() -> dict[str, Any] | None:
     """Pop the next exercise evaluation job (blocking with short timeout)."""
     r = await _get_redis()
-    _, raw = await r.blpop(QUEUE_NAME, timeout=1)
-    if raw is None:
+    result = await r.blpop(QUEUE_NAME, timeout=1)
+    if result is None:
         return None
+    _, raw = result
     return json.loads(raw)
 
 
