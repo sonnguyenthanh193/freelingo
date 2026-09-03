@@ -29,8 +29,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/artcc/freelingo-backend:latest
-    pull_policy: always
+    image: freelingo-backend:local
     container_name: freelingo-backend
     restart: unless-stopped
     command: >
@@ -39,14 +38,6 @@ services:
       - ${DATA_PATH}/avatars:/app/avatars
       - ${DATA_PATH}/audio:/data/audio
       - ${DATA_PATH}/tts_previews:/app/tts_previews
-      - ./backend/app/core/config.py:/app/app/core/config.py
-      - ./backend/app/services/llm_adapter.py:/app/app/services/llm_adapter.py
-      - ./backend/app/models/lesson.py:/app/app/models/lesson.py
-      - ./backend/app/routers/lessons.py:/app/app/routers/lessons.py
-      - ./backend/app/schemas/lessons.py:/app/app/schemas/lessons.py
-      - ./backend/app/services/eval_queue.py:/app/app/services/eval_queue.py
-      - ./backend/app/workers:/app/app/workers
-      - ./backend/alembic/versions/0051_exercise_eval_status.py:/app/alembic/versions/0051_exercise_eval_status.py
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
@@ -119,19 +110,10 @@ services:
         condition: service_healthy
 
   eval-worker:
-    image: ghcr.io/artcc/freelingo-backend:latest
-    pull_policy: always
+    image: freelingo-backend:local
     container_name: freelingo-eval-worker
     restart: unless-stopped
     command: python -m app.workers.eval_worker
-    volumes:
-      - ./backend/app/core/config.py:/app/app/core/config.py
-      - ./backend/app/services/llm_adapter.py:/app/app/services/llm_adapter.py
-      - ./backend/app/models/lesson.py:/app/app/models/lesson.py
-      - ./backend/app/routers/lessons.py:/app/app/routers/lessons.py
-      - ./backend/app/schemas/lessons.py:/app/app/schemas/lessons.py
-      - ./backend/app/services/eval_queue.py:/app/app/services/eval_queue.py
-      - ./backend/app/workers:/app/app/workers
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0

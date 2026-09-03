@@ -1,15 +1,15 @@
 """Add eval_status column to exercises for async evaluation tracking.
 
-Revision ID: 0051_exercise_eval_status
-Revises: 0050_dashboard_banner
+Revision ID: 0052_exercise_eval_status
+Revises: 0051_conversation_speech_pause
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0051_exercise_eval_status"
-down_revision = "0050_dashboard_banner"
+revision = "0052_exercise_eval_status"
+down_revision = "0051_conversation_speech_pause"
 branch_labels = None
 depends_on = None
 
