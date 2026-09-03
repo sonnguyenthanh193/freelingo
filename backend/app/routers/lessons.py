@@ -19,9 +19,11 @@ from app.models.lesson import Exercise, Lesson
 from app.models.study_plan import StudyPlan
 from app.models.user import User
 from app.schemas.lessons import (
+    ExerciseAnswerAsyncResponse,
     ExerciseAnswerRequest,
     ExerciseAnswerResponse,
     ExerciseResponse,
+    ExerciseStatusResponse,
     LessonDetailResponse,
     LessonResponse,
     NativeExerciseExplanationResponse,
@@ -42,6 +44,7 @@ from app.services.llm_adapter import (
     LLMUnavailableError,
     llm_adapter,
 )
+from app.services.eval_queue import enqueue_exercise
 from app.services.progress_service import update_daily_progress, upsert_unit_competency
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
@@ -343,7 +346,7 @@ async def complete_lesson(
     return lesson
 
 
-@router.post("/exercises/{exercise_id}/answer", response_model=ExerciseAnswerResponse)
+@router.post("/exercises/{exercise_id}/answer", response_model=ExerciseAnswerAsyncResponse)
 @limiter.limit("20/minute")
 async def answer_exercise(
     request: Request,
@@ -364,141 +367,58 @@ async def answer_exercise(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Study plan not found for lesson",
         )
-    target_language = plan.target_language
 
-    if exercise.answered_at is not None:
+    # Allow re-submission if previous evaluation failed
+    if exercise.answered_at is not None and exercise.eval_status != "failed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Exercise already answered"
         )
 
-    if exercise.exercise_type == "free_write":
-        prompt = exercise.question
-        # Bug 4: use exercise-specific criteria from options if available
-        criteria = [opt for opt in (exercise.options or []) if isinstance(opt, str) and opt.strip()]
-        if not criteria:
-            criteria = ["grammar", "spelling", "coherence"]
-        try:
-            eval_result = await evaluate_free_write(
-                cefr_level=lesson.cefr_level,
-                prompt=prompt,
-                criteria=criteria,
-                answer=data.answer,
-                target_language=target_language,
-                native_language=current_user.native_language,
-            )
-            sco = eval_result.score if hasattr(eval_result, "score") else eval_result["score"]
-            fb = (
-                eval_result.feedback
-                if hasattr(eval_result, "feedback")
-                else eval_result["feedback"]
-            )
-            exercise.score = sco
-            exercise.feedback = fb
-        except LLMTimeoutError, LLMUnavailableError, LLMError:
-            exercise.score = 0.5
-            exercise.feedback = _answer_feedback(
-                current_user.native_language, "free_write_unavailable"
-            )
-    elif exercise.exercise_type == "fill_blank":
-        try:
-            eval_result = await evaluate_fill_blank(
-                cefr_level=lesson.cefr_level,
-                question=exercise.question,
-                correct_answer=exercise.correct_answer,
-                student_answer=data.answer,
-                target_language=target_language,
-                native_language=current_user.native_language,
-            )
-            exercise.score = eval_result.score
-            exercise.feedback = eval_result.feedback
-        except LLMTimeoutError, LLMUnavailableError, LLMError:
-            # Fallback: normalised string comparison
-            ua = data.answer.strip().lower().rstrip(".,!?")
-            ca = exercise.correct_answer.strip().lower().rstrip(".,!?")
-            alternatives = [a.strip().lower() for a in ca.split("/")]
-            is_correct = ua == ca or ua in alternatives
-            exercise.score = 1.0 if is_correct else 0.0
-            exercise.feedback = (
-                _answer_feedback(current_user.native_language, "correct")
-                if is_correct
-                else _answer_feedback(
-                    current_user.native_language,
-                    "correct_answer",
-                    answer=exercise.correct_answer,
-                )
-            )
-    elif exercise.exercise_type == "pronunciation":
-        transcription = data.answer
-        try:
-            eval_result = await evaluate_pronunciation(
-                cefr_level=lesson.cefr_level,
-                target=exercise.correct_answer,
-                transcription=transcription,
-                target_language=target_language,
-                native_language=current_user.native_language,
-            )
-            exercise.score = eval_result.score
-            exercise.feedback = eval_result.feedback
-        except LLMTimeoutError, LLMUnavailableError, LLMError:
-            # Fallback: normalised comparison stripping punctuation
-            norm_target = re.sub(r"[^\w\s]", "", exercise.correct_answer).strip().lower()
-            norm_answer = re.sub(r"[^\w\s]", "", transcription).strip().lower()
-            is_close = (
-                norm_target == norm_answer
-                or norm_target in norm_answer
-                or norm_answer in norm_target
-            )
-            exercise.score = 1.0 if is_close else 0.0
-            exercise.feedback = (
-                _answer_feedback(current_user.native_language, "good_pronunciation")
-                if is_close
-                else _answer_feedback(
-                    current_user.native_language,
-                    "target_phrase",
-                    answer=exercise.correct_answer,
-                )
-            )
-    else:
-        user_ans = data.answer.strip().lower()
-        correct_ans = exercise.correct_answer.strip().lower()
-        # Compatibility: old exercises may store correct_answer as bare letter ("a")
-        # while clients now submit full option text ("a. works"). Accept both.
-        _stripped = re.sub(r"^[a-z]\. *", "", user_ans)
-        is_correct = (
-            user_ans == correct_ans
-            or _stripped == correct_ans
-            or user_ans == re.sub(r"^[a-z]\. *", "", correct_ans)
-        )
-        exercise.score = 1.0 if is_correct else 0.0
-        exercise.feedback = (
-            _answer_feedback(current_user.native_language, "correct")
-            if is_correct
-            else _answer_feedback(
-                current_user.native_language,
-                "correct_answer",
-                answer=exercise.correct_answer,
-            )
-        )
-
+    # Save user answer and mark as pending
     exercise.user_answer = data.answer
+    exercise.eval_status = "pending"
+    exercise.score = None
+    exercise.feedback = None
     exercise.answered_at = datetime.now(UTC).replace(tzinfo=None)
     await db.commit()
-    await db.refresh(exercise)
 
-    await update_daily_progress(
-        db,
-        current_user.id,
-        exercise_correct=exercise.score >= 0.5,
-        skill=lesson.lesson_type,
-        skill_score=exercise.score,
-        study_plan_id=lesson.study_plan_id,
+    # Push to async evaluation queue
+    await enqueue_exercise(
+        exercise_id=exercise.id,
+        payload={
+            "user_id": current_user.id,
+            "lesson_id": lesson.id,
+            "study_plan_id": lesson.study_plan_id,
+        },
     )
 
-    return ExerciseAnswerResponse(
-        id=exercise.id,
-        score=exercise.score,
-        feedback=exercise.feedback,
-        correct_answer=exercise.correct_answer,
+    return ExerciseAnswerAsyncResponse(
+        task_id=exercise.id,
+        status="processing",
+    )
+
+
+@router.get("/exercises/{exercise_id}/status", response_model=ExerciseStatusResponse)
+@limiter.limit("60/minute")
+async def exercise_status(
+    request: Request,
+    exercise_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Poll exercise evaluation status."""
+    exercise = await db.get(Exercise, exercise_id)
+    if not exercise:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found")
+
+    # Verify user owns this exercise
+    await _get_lesson_for_user(exercise.lesson_id, current_user.id, db)
+
+    return ExerciseStatusResponse(
+        status=exercise.eval_status or "completed",
+        score=exercise.score if exercise.eval_status == "completed" else None,
+        feedback=exercise.feedback if exercise.eval_status == "completed" else None,
+        correct_answer=exercise.correct_answer if exercise.eval_status == "completed" else None,
     )
 
 
@@ -650,7 +570,7 @@ async def generate_exercise_native_explanation(
             NativeExerciseExplanationResponse,
         )
         native_exp = result_native.native_explanation
-    except LLMError, LLMTimeoutError, LLMUnavailableError:
+    except (LLMError, LLMTimeoutError, LLMUnavailableError):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not generate native exercise explanation at this time",
@@ -708,7 +628,7 @@ async def generate_exercise_native_hint(
         native_hint = result_native.native_hint
         if hint_reveals_answer(native_hint, exercise.correct_answer):
             raise LLMError("Generated hint revealed the answer")
-    except LLMError, LLMTimeoutError, LLMUnavailableError:
+    except (LLMError, LLMTimeoutError, LLMUnavailableError):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not generate native exercise hint at this time",
@@ -760,7 +680,7 @@ async def generate_native_explanation(
             NativeExplanationResponse,
         )
         native_exp: dict = result.model_dump() if hasattr(result, "model_dump") else result
-    except LLMError, LLMTimeoutError, LLMUnavailableError:
+    except (LLMError, LLMTimeoutError, LLMUnavailableError):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not generate native explanation at this time",

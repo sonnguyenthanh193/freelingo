@@ -116,6 +116,20 @@ class ExerciseAnswerResponse(BaseModel):
     correct_answer: str
 
 
+class ExerciseAnswerAsyncResponse(BaseModel):
+    """Response when answer is queued for async evaluation."""
+    task_id: int
+    status: str  # "processing" | "completed" | "failed"
+
+
+class ExerciseStatusResponse(BaseModel):
+    """Response for exercise evaluation status polling."""
+    status: str  # "pending" | "processing" | "completed" | "failed"
+    score: float | None = None
+    feedback: str | None = None
+    correct_answer: str | None = None
+
+
 class FreeWriteEvaluation(BaseModel):
     score: float
     feedback: str

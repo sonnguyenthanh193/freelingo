@@ -530,7 +530,10 @@ class LLMAdapter:
             )
             self.model = settings.OLLAMA_MODEL
         elif self.provider == "openai":
-            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            kwargs = {"api_key": settings.OPENAI_API_KEY}
+            if settings.OPENAI_BASE_URL:
+                kwargs["base_url"] = settings.OPENAI_BASE_URL
+            self.client = AsyncOpenAI(**kwargs)
             self.model = settings.OPENAI_MODEL
         elif self.provider == "deepseek":
             self.client = AsyncOpenAI(

@@ -67,3 +67,4 @@ class Exercise(Base):
     feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    eval_status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")

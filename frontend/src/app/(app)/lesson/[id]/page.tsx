@@ -317,18 +317,82 @@ export default function LessonPage() {
         }
       )
       const result = await res.json()
-      setExercises((prev) => {
-        const copy = [...prev]
-        copy[currentExercise] = {
-          ...copy[currentExercise],
-          score: result.score,
-          feedback: result.feedback,
-          user_answer: finalAnswer,
+
+      // Async evaluation: poll for status
+      if (result.status === 'processing') {
+        setExercises((prev) => {
+          const copy = [...prev]
+          copy[currentExercise] = {
+            ...copy[currentExercise],
+            user_answer: finalAnswer,
+            score: null,
+            feedback: null,
+          }
+          return copy
+        })
+
+        // Poll for completion (without loading indicator)
+        let attempts = 0
+        const maxAttempts = 120 // 2 minutes max
+        const pollInterval = 1000 // 1 second
+        const token = useAuthStore.getState().accessToken
+
+        while (attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, pollInterval))
+          attempts++
+
+          try {
+            const statusRes = await fetch(
+              `/api/lessons/exercises/${exercise.id}/status`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
+              }
+            )
+            if (!statusRes.ok) continue
+
+            const status = await statusRes.json()
+
+            if (status.status === 'completed') {
+              setExercises((prev) => {
+                const copy = [...prev]
+                copy[currentExercise] = {
+                  ...copy[currentExercise],
+                  score: status.score,
+                  feedback: status.feedback,
+                  user_answer: finalAnswer,
+                }
+                return copy
+              })
+              setSubmitError(false)
+              return
+            }
+
+            if (status.status === 'failed') {
+              setSubmitError(true)
+              return
+            }
+          } catch {
+            // Continue polling on network errors
+          }
         }
-        return copy
-      })
-      if (overrideAnswer !== undefined) setAnswer(overrideAnswer)
-      setSubmitError(false)
+
+        // Timeout: evaluation took too long
+        setSubmitError(true)
+      } else {
+        // Synchronous evaluation (fill_blank, pronunciation)
+        setExercises((prev) => {
+          const copy = [...prev]
+          copy[currentExercise] = {
+            ...copy[currentExercise],
+            score: result.score,
+            feedback: result.feedback,
+            user_answer: finalAnswer,
+          }
+          return copy
+        })
+        if (overrideAnswer !== undefined) setAnswer(overrideAnswer)
+        setSubmitError(false)
+      }
     } catch {
       setSubmitError(true)
     } finally {

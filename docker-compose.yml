@@ -39,14 +39,15 @@ services:
       - ${DATA_PATH}/avatars:/app/avatars
       - ${DATA_PATH}/audio:/data/audio
       - ${DATA_PATH}/tts_previews:/app/tts_previews
+      - ./backend/app/core/config.py:/app/app/core/config.py
+      - ./backend/app/services/llm_adapter.py:/app/app/services/llm_adapter.py
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       SECRET_KEY: ${SECRET_KEY}
       LLM_PROVIDER: ${LLM_PROVIDER}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_MODEL: ${OPENAI_MODEL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
@@ -111,19 +112,107 @@ services:
       redis:
         condition: service_healthy
 
+  eval-worker:
+    image: ghcr.io/artcc/freelingo-backend:latest
+    pull_policy: always
+    container_name: freelingo-eval-worker
+    restart: unless-stopped
+    command: python -m app.workers.eval_worker
+    volumes:
+      - ./backend/app/core/config.py:/app/app/core/config.py
+      - ./backend/app/services/llm_adapter.py:/app/app/services/llm_adapter.py
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL}
+      TTS_PROVIDER: ${TTS_PROVIDER:-local}
+      TTS_BASE_URL: ${TTS_BASE_URL:-http://kokoro:8880}
+      TTS_VOICE: ${TTS_VOICE:-af_heart}
+      OPENAI_TTS_MODEL: ${OPENAI_TTS_MODEL:-tts-1}
+      OPENAI_TTS_VOICE: ${OPENAI_TTS_VOICE:-nova}
+      OPENAI_TTS_SPEED: ${OPENAI_TTS_SPEED:-1.0}
+      STT_PROVIDER: ${STT_PROVIDER:-local}
+      STT_BASE_URL: ${STT_BASE_URL:-http://whisper:9000}
+      OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      FIRST_USER_IS_ADMIN: ${FIRST_USER_IS_ADMIN:-true}
+      BLOCKED_EMAIL_DOMAINS: ${BLOCKED_EMAIL_DOMAINS:-[]}
+      AVAILABLE_TARGET_LANGUAGES: ${AVAILABLE_TARGET_LANGUAGES:-["en-US","en-GB"]}
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-}
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@freelingo.app}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      SMTP_SSL: ${SMTP_SSL:-false}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-4}
+      DEFAULT_CONVERSATION_MAX_DURATION: ${DEFAULT_CONVERSATION_MAX_DURATION:-1800}
+      DEFAULT_CONVERSATION_INACTIVITY_TIMEOUT: ${DEFAULT_CONVERSATION_INACTIVITY_TIMEOUT:-180}
+      DEFAULT_CONVERSATION_WEEKLY_SESSIONS: ${DEFAULT_CONVERSATION_WEEKLY_SESSIONS:-0}
+      DEFAULT_CONVERSATION_DAILY_MINUTES: ${DEFAULT_CONVERSATION_DAILY_MINUTES:-30}
+      DEFAULT_CONVERSATION_WEEKLY_MINUTES: ${DEFAULT_CONVERSATION_WEEKLY_MINUTES:-90}
+      DEFAULT_MONTHLY_TOKENS_LIMIT: ${DEFAULT_MONTHLY_TOKENS_LIMIT:-1000000}
+      ASSESSMENT_VOICE_TRIAL_DURATION_SECONDS: ${ASSESSMENT_VOICE_TRIAL_DURATION_SECONDS:-300}
+      FREEMIUM_CHAT_DAILY_MESSAGES: ${FREEMIUM_CHAT_DAILY_MESSAGES:-5}
+      FREEMIUM_LESSONS_DAILY: ${FREEMIUM_LESSONS_DAILY:-3}
+      FREEMIUM_LISTENING_WEEKLY: ${FREEMIUM_LISTENING_WEEKLY:-3}
+      FREEMIUM_READING_WEEKLY: ${FREEMIUM_READING_WEEKLY:-3}
+      FREEMIUM_VOICE_WEEKLY_MINUTES: ${FREEMIUM_VOICE_WEEKLY_MINUTES:-5}
+      FREEMIUM_TRIAL_ENABLED: ${FREEMIUM_TRIAL_ENABLED:-true}
+      FREEMIUM_TRIAL_DAYS: ${FREEMIUM_TRIAL_DAYS:-7}
+      STRIPE_ENABLED: ${STRIPE_ENABLED:-false}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_MONTHLY: ${STRIPE_PRICE_MONTHLY:-}
+      STRIPE_PRICE_YEARLY: ${STRIPE_PRICE_YEARLY:-}
+      STRIPE_TRIAL_DAYS: ${STRIPE_TRIAL_DAYS:-7}
+      STRIPE_BASE_URL: ${STRIPE_BASE_URL:-http://localhost:3000}
+      PRICE_MONTHLY: ${PRICE_MONTHLY:-14.95}
+      PRICE_YEARLY: ${PRICE_YEARLY:-149.50}
+      TOTAL_PRICE_MONTHLY: ${TOTAL_PRICE_MONTHLY:-19.95}
+      TOTAL_PRICE_YEARLY: ${TOTAL_PRICE_YEARLY:-199.50}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: freelingo-nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx-proxy.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+
   frontend:
     image: ghcr.io/artcc/freelingo-frontend:latest
     pull_policy: always
     container_name: freelingo-frontend
     restart: unless-stopped
     environment:
-      BACKEND_URL: http://backend:8000
+      BACKEND_URL: http://nginx-proxy:8080
       NEXT_PUBLIC_UMAMI_SCRIPT_URL: ${NEXT_PUBLIC_UMAMI_SCRIPT_URL:-}
       NEXT_PUBLIC_UMAMI_WEBSITE_ID: ${NEXT_PUBLIC_UMAMI_WEBSITE_ID:-}
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      - nginx-proxy
 
   # TTS (Kokoro-FastAPI) ──────────────────────────────────────────
   # Only required when TTS_PROVIDER=local (default).
@@ -133,18 +222,11 @@ services:
   # CPU-only host: use :cpu-latest and remove the 'deploy' block.
   # See: https://github.com/remsky/Kokoro-FastAPI
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest-cu128
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
     container_name: freelingo-kokoro
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   # STT (faster-whisper) ──────────────────────────────────────────
   # Only required when STT_PROVIDER=local (default).
@@ -153,16 +235,9 @@ services:
   # CPU-only host:     replace image tag with onerahmet/openai-whisper-asr-webservice:latest
   #                    set ASR_MODEL=base or small, and remove the entire 'deploy' block.
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    image: onerahmet/openai-whisper-asr-webservice:latest
     container_name: freelingo-whisper
     restart: unless-stopped
     environment:
-      - ASR_MODEL=${STT_MODEL:-large-v3-turbo}
-      - ASR_ENGINE=${STT_ENGINE:-faster_whisper}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - ASR_MODEL=base
+      - ASR_ENGINE=faster_whisper
