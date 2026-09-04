@@ -131,6 +131,7 @@ export default function PlanPage() {
   >({})
   const [units, setUnits] = useState<CurriculumUnit[]>([])
   const [fallback, setFallback] = useState(false)
+  const [generating, setGenerating] = useState(false)
 
   const loadPlan = useCallback(async () => {
     setLoading(true)
@@ -205,9 +206,9 @@ export default function PlanPage() {
       if (todayRes?.ok) {
         const todayData = (await todayRes.json()) as {
           lessons: TodayLesson[]
-          fallback?: boolean
+          generating?: boolean
         }
-        if (todayData.fallback) setFallback(true)
+        setGenerating(todayData.generating ?? false)
         const nextLesson = todayData.lessons.find(
           (l) => l.id != null && !l.is_completed
         )
@@ -242,6 +243,15 @@ export default function PlanPage() {
         .catch(() => setUnits([]))
     }
   }, [plan?.cefr_level, activeLanguage?.code])
+
+  // Poll when lesson is being generated (rate limited)
+  useEffect(() => {
+    if (!generating) return
+    const timer = setInterval(() => {
+      void loadPlan()
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [generating, loadPlan])
 
   if (loading) {
     return <PageLoading />
@@ -419,12 +429,12 @@ export default function PlanPage() {
         )}
       </div>
 
-      {/* ── Fallback lesson banner ── */}
-      {fallback && (
-        <div className="border-amber-500/40 bg-amber-500/10 border px-6 py-3">
-          <p className="text-amber-600 font-mono text-sm">
-            {t('fallbackBanner') ??
-              'Some lessons were generated with limited content due to temporary AI service unavailability. You can still study, but full AI-generated content will be available when the service recovers.'}
+      {/* ── Generating lesson banner ── */}
+      {generating && (
+        <div className="border-blue-500/40 bg-blue-500/10 border px-6 py-3">
+          <p className="text-blue-600 font-mono text-sm">
+            {t('generatingBanner') ??
+              'AI is generating your lesson. Please wait a moment...'}
           </p>
         </div>
       )}

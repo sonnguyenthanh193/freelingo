@@ -87,7 +87,7 @@ class TodayResponse(BaseModel):
     progress_day: int = 0
     total_days: int = 0
     pending_count: int = 0
-    fallback: bool = False
+    generating: bool = False
 
 
 class PendingLessonResponse(BaseModel):
