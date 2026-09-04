@@ -22,11 +22,53 @@ from app.schemas.study_plan import (
     TodayLesson,
     TodayResponse,
 )
+from app.services.llm_adapter import LLMUnavailableError
 from app.services.lesson_generator import generate_lesson
 from app.services.study_plan_generator import generate_study_plan
 from app.services.user_language_service import ensure_user_language, get_active_language
 
 logger = get_logger(__name__)
+
+
+def _fallback_lesson_content(
+    lesson_type: str, topic: str, cefr_level: str
+) -> dict:
+    """Create minimal lesson content when LLM is unavailable."""
+    exercises = []
+    if lesson_type == "free_write":
+        exercises.append({
+            "type": "free_write",
+            "question": f"Write a short paragraph about: {topic}",
+            "explanation": "Practice your writing skills.",
+        })
+    elif lesson_type == "fill_blank":
+        exercises.append({
+            "type": "fill_blank",
+            "question": f"Complete the sentence related to: {topic}",
+            "options": ["Option A", "Option B", "Option C"],
+            "correct": "Option A",
+            "explanation": "Choose the correct answer.",
+        })
+    elif lesson_type == "pronunciation":
+        exercises.append({
+            "type": "pronunciation",
+            "question": f"Read aloud: {topic}",
+            "explanation": "Practice pronunciation.",
+        })
+    else:
+        exercises.append({
+            "type": "multiple_choice",
+            "question": f"Answer the question about: {topic}",
+            "options": ["A", "B", "C", "D"],
+            "correct": "A",
+            "explanation": "Select the best answer.",
+        })
+
+    return {
+        "title": topic,
+        "objectives": [f"Practice {lesson_type} skills on {topic}"],
+        "exercises": exercises,
+    }
 
 router = APIRouter(prefix="/api/study-plan", tags=["study-plan"])
 
@@ -335,6 +377,37 @@ async def get_today_lessons(
                 if existing:
                     lesson_id = existing.id
                     lesson_completed = existing.is_completed
+            except LLMUnavailableError:
+                logger.warning("LLM unavailable, using fallback lesson for plan %s", plan_id)
+                await db.rollback()
+                content_dict = _fallback_lesson_content(d_type, d_title, plan.cefr_level)
+                lesson = Lesson(
+                    study_plan_id=plan.id,
+                    title=d_title,
+                    lesson_type=d_type,
+                    cefr_level=plan.cefr_level,
+                    week_number=current_week,
+                    day_number=current_day,
+                    unit_id=d_unit_id,
+                    content=content_dict,
+                )
+                db.add(lesson)
+                await db.flush()
+                for ex in content_dict.get("exercises", []):
+                    exercise = Exercise(
+                        lesson_id=lesson.id,
+                        exercise_type=ex.get("type", "multiple_choice"),
+                        question=ex.get("question", ""),
+                        options=ex.get("options"),
+                        correct_answer=ex.get("correct", ""),
+                        explanation=ex.get("explanation"),
+                    )
+                    db.add(exercise)
+                await db.commit()
+                await db.refresh(lesson)
+                lesson_id = lesson.id
+                if d_unit_id:
+                    lessons_by_unit[d_unit_id].append(lesson)
             except Exception:
                 logger.exception("Failed to generate or persist lesson for plan %s", plan_id)
 
