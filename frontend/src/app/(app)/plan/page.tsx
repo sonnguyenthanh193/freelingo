@@ -278,8 +278,7 @@ export default function PlanPage() {
       {generating && (
         <div className="border-blue-500/40 bg-blue-500/10 border px-6 py-3">
           <p className="text-blue-600 font-mono text-sm">
-            {t('generatingBanner') ??
-              'AI is generating your lesson. Please wait a moment...'}
+            AI is generating your lesson. Please wait a moment...
           </p>
         </div>
       )}
@@ -479,6 +478,7 @@ export default function PlanPage() {
             setActiveDrawer(null)
             router.push(`/lesson/${lessonId}`)
           }}
+          generating={generating}
         />
       )}
     </div>

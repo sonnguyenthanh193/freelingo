@@ -19,6 +19,7 @@ interface Props {
   lessons: Lesson[]
   onClose: () => void
   onStartLesson: (lessonId: number) => void
+  generating?: boolean
 }
 
 export default function UnitDrawer({
@@ -26,6 +27,7 @@ export default function UnitDrawer({
   lessons,
   onClose,
   onStartLesson,
+  generating,
 }: Props) {
   const t = useTranslations('plan')
   const tCommon = useTranslations('common')
@@ -111,6 +113,13 @@ export default function UnitDrawer({
               {t('lessonsHeader', { count: lessons.length })}
             </p>
           </div>
+          {generating && (
+            <div className="border-blue-500/40 bg-blue-500/10 border-b px-6 py-3">
+              <p className="text-blue-600 font-mono text-sm">
+                AI is generating your lesson. Please wait a moment...
+              </p>
+            </div>
+          )}
           <div className="divide-fl-border divide-y">
             {lessons.length === 0 ? (
               <div className="px-6 py-6">
