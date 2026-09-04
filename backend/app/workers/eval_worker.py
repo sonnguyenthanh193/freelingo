@@ -132,7 +132,7 @@ async def _evaluate(exercise: Exercise, lesson: Lesson, native_language: str) ->
 
 async def _process_job(job: dict) -> None:
     exercise_id = job["exercise_id"]
-    async with async_session() as db:
+    async with AsyncSessionLocal() as db:
         exercise = await db.get(Exercise, exercise_id)
         if exercise is None:
             logger.warning("Exercise %d not found, skipping", exercise_id)
