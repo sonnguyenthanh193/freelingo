@@ -527,10 +527,11 @@ class LLMAdapter:
             self.client = AsyncOpenAI(
                 base_url=f"{settings.OLLAMA_BASE_URL}/v1",
                 api_key="ollama",
+                max_retries=0,
             )
             self.model = settings.OLLAMA_MODEL
         elif self.provider == "openai":
-            kwargs = {"api_key": settings.OPENAI_API_KEY}
+            kwargs = {"api_key": settings.OPENAI_API_KEY, "max_retries": 0}
             if settings.OPENAI_BASE_URL:
                 kwargs["base_url"] = settings.OPENAI_BASE_URL
             self.client = AsyncOpenAI(**kwargs)
@@ -539,6 +540,7 @@ class LLMAdapter:
             self.client = AsyncOpenAI(
                 base_url="https://api.deepseek.com/v1",
                 api_key=settings.DEEPSEEK_API_KEY,
+                max_retries=0,
             )
             self.model = settings.DEEPSEEK_MODEL
         elif self.provider == "anthropic":
@@ -559,10 +561,9 @@ class LLMAdapter:
             except LLMError as e:
                 if tools_requested and _is_tools_unsupported_error(e):
                     raise LLMToolsUnsupportedError(f"{self.provider} does not support tools") from e
-                # Already a typed LLM error raised by a provider-specific
-                # handler (e.g. _anthropic_chat). Preserve the type instead of
-                # re-wrapping into a generic LLMError.
                 last_error = e
+                if isinstance(e, LLMUnavailableError):
+                    raise
             except TimeoutError:
                 last_error = LLMTimeoutError(f"{self.provider} timed out after {REQUEST_TIMEOUT}s")
             except Exception as e:
@@ -573,10 +574,12 @@ class LLMAdapter:
                     last_error = LLMUnavailableError(
                         f"{self.provider} is unreachable. Check that the service is running."
                     )
+                    raise last_error
                 elif "rate" in error_msg.lower():
                     last_error = LLMUnavailableError(
                         f"{self.provider} rate limit exceeded. Try again later."
                     )
+                    raise last_error
                 else:
                     last_error = LLMError(f"{self.provider} error: {error_msg}")
 
