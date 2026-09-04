@@ -29,47 +29,6 @@ from app.services.user_language_service import ensure_user_language, get_active_
 
 logger = get_logger(__name__)
 
-
-def _fallback_lesson_content(
-    lesson_type: str, topic: str, cefr_level: str
-) -> dict:
-    """Create minimal lesson content when LLM is unavailable."""
-    exercises = []
-    if lesson_type == "free_write":
-        exercises.append({
-            "type": "free_write",
-            "question": f"Write a short paragraph about: {topic}",
-            "explanation": "Practice your writing skills.",
-        })
-    elif lesson_type == "fill_blank":
-        exercises.append({
-            "type": "fill_blank",
-            "question": f"Complete the sentence related to: {topic}",
-            "options": ["Option A", "Option B", "Option C"],
-            "correct": "Option A",
-            "explanation": "Choose the correct answer.",
-        })
-    elif lesson_type == "pronunciation":
-        exercises.append({
-            "type": "pronunciation",
-            "question": f"Read aloud: {topic}",
-            "explanation": "Practice pronunciation.",
-        })
-    else:
-        exercises.append({
-            "type": "multiple_choice",
-            "question": f"Answer the question about: {topic}",
-            "options": ["A", "B", "C", "D"],
-            "correct": "A",
-            "explanation": "Select the best answer.",
-        })
-
-    return {
-        "title": topic,
-        "objectives": [f"Practice {lesson_type} skills on {topic}"],
-        "exercises": exercises,
-    }
-
 router = APIRouter(prefix="/api/study-plan", tags=["study-plan"])
 
 
