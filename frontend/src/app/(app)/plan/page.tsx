@@ -274,6 +274,16 @@ export default function PlanPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+      {/* ── Generating lesson banner ── */}
+      {generating && (
+        <div className="border-blue-500/40 bg-blue-500/10 border px-6 py-3">
+          <p className="text-blue-600 font-mono text-sm">
+            {t('generatingBanner') ??
+              'AI is generating your lesson. Please wait a moment...'}
+          </p>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="border-fl-border bg-fl-surface border">
         <div className="border-fl-border flex items-center gap-2 border-b px-6 py-4">
@@ -428,16 +438,6 @@ export default function PlanPage() {
           />
         )}
       </div>
-
-      {/* ── Generating lesson banner ── */}
-      {generating && (
-        <div className="border-blue-500/40 bg-blue-500/10 border px-6 py-3">
-          <p className="text-blue-600 font-mono text-sm">
-            {t('generatingBanner') ??
-              'AI is generating your lesson. Please wait a moment...'}
-          </p>
-        </div>
-      )}
 
       {/* ── Level test banner ── */}
       {allUnitsCompleted && !plan.completion_test_taken && (

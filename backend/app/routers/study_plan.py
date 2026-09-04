@@ -303,9 +303,10 @@ async def get_today_lessons(
                     break
 
         # Auto-generate the lesson if it doesn't exist yet
-        plan_id = plan.id  # cache before any rollback that would expire the ORM object
+        plan_id = plan.id  # cache before any rollback
+        cefr_level_cache = plan.cefr_level
+        progress_day_cache = plan.progress_day
         if lesson_id is None:
-            cefr_level = plan.cefr_level  # cache before potential rollback
             previous_lessons = [
                 {
                     "title": sibling.title,
@@ -402,10 +403,10 @@ async def get_today_lessons(
             )
 
     return TodayResponse(
-        plan_id=plan.id,
-        cefr_level=plan.cefr_level,
+        plan_id=plan_id,
+        cefr_level=cefr_level_cache,
         lessons=today_lessons,
-        progress_day=plan.progress_day,
+        progress_day=progress_day_cache,
         total_days=total_days,
         pending_count=pending_count,
         generating=generating,
