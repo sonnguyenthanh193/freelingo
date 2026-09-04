@@ -275,6 +275,7 @@ async def get_today_lessons(
             lessons_by_unit[lsn.unit_id].append(lsn)
 
     today_lessons = []
+    fallback_used = False
     for d in days:
         d_day = d["day"] if isinstance(d, dict) else d.day
         if d_day != current_day:
@@ -304,6 +305,7 @@ async def get_today_lessons(
         # Auto-generate the lesson if it doesn't exist yet
         plan_id = plan.id  # cache before any rollback that would expire the ORM object
         if lesson_id is None:
+            cefr_level = plan.cefr_level  # cache before potential rollback
             previous_lessons = [
                 {
                     "title": sibling.title,
@@ -380,12 +382,13 @@ async def get_today_lessons(
             except LLMUnavailableError:
                 logger.warning("LLM unavailable, using fallback lesson for plan %s", plan_id)
                 await db.rollback()
-                content_dict = _fallback_lesson_content(d_type, d_title, plan.cefr_level)
+                fallback_used = True
+                content_dict = _fallback_lesson_content(d_type, d_title, cefr_level)
                 lesson = Lesson(
-                    study_plan_id=plan.id,
+                    study_plan_id=plan_id,
                     title=d_title,
                     lesson_type=d_type,
-                    cefr_level=plan.cefr_level,
+                    cefr_level=cefr_level,
                     week_number=current_week,
                     day_number=current_day,
                     unit_id=d_unit_id,
@@ -433,6 +436,7 @@ async def get_today_lessons(
         progress_day=plan.progress_day,
         total_days=total_days,
         pending_count=pending_count,
+        fallback=fallback_used,
     )
 
 

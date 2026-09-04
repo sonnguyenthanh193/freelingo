@@ -194,8 +194,7 @@ services:
       - backend
 
   frontend:
-    image: ghcr.io/artcc/freelingo-frontend:latest
-    pull_policy: always
+    image: freelingo-frontend:local
     container_name: freelingo-frontend
     restart: unless-stopped
     environment:

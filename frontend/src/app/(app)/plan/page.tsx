@@ -130,6 +130,7 @@ export default function PlanPage() {
     Record<string, Pick<Lesson, 'id' | 'completed' | 'action'>>
   >({})
   const [units, setUnits] = useState<CurriculumUnit[]>([])
+  const [fallback, setFallback] = useState(false)
 
   const loadPlan = useCallback(async () => {
     setLoading(true)
@@ -204,7 +205,9 @@ export default function PlanPage() {
       if (todayRes?.ok) {
         const todayData = (await todayRes.json()) as {
           lessons: TodayLesson[]
+          fallback?: boolean
         }
+        if (todayData.fallback) setFallback(true)
         const nextLesson = todayData.lessons.find(
           (l) => l.id != null && !l.is_completed
         )
@@ -415,6 +418,16 @@ export default function PlanPage() {
           />
         )}
       </div>
+
+      {/* ── Fallback lesson banner ── */}
+      {fallback && (
+        <div className="border-amber-500/40 bg-amber-500/10 border px-6 py-3">
+          <p className="text-amber-600 font-mono text-sm">
+            {t('fallbackBanner') ??
+              'Some lessons were generated with limited content due to temporary AI service unavailability. You can still study, but full AI-generated content will be available when the service recovers.'}
+          </p>
+        </div>
+      )}
 
       {/* ── Level test banner ── */}
       {allUnitsCompleted && !plan.completion_test_taken && (
